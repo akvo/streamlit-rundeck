@@ -88,7 +88,9 @@ APP_NAME=$(echo "$DEPLOYMENT_INFO" | grep "^APP_NAME=" | cut -d= -f2)
 TARGET_BRANCH=$(echo "$DEPLOYMENT_INFO" | grep "^TARGET_BRANCH=" | cut -d= -f2)
 MAIN_FILE=$(echo "$DEPLOYMENT_INFO" | grep "^MAIN_FILE=" | cut -d= -f2)
 REGION=$(echo "$DEPLOYMENT_INFO" | grep "^REGION=" | cut -d= -f2)
-SECRETS_CONTENT=$(echo "$DEPLOYMENT_INFO" | grep "^SECRETS_CONTENT=" | cut -d= -f2-)
+
+# Extract multiline secrets content properly (everything after SECRETS_CONTENT= until WEBHOOK_ID=)
+SECRETS_CONTENT=$(echo "$DEPLOYMENT_INFO" | sed -n '/^SECRETS_CONTENT=/,/^WEBHOOK_ID=/p' | sed '1s/^SECRETS_CONTENT=//' | sed '$d')
 
 log "Found deployment: $APP_NAME"
 log "Target branch: $TARGET_BRANCH"

@@ -32,16 +32,25 @@ SQL="SELECT app_name, github_url, main_file, target_branch, region, secrets_cont
        AND target_branch = '$TARGET_BRANCH'
      LIMIT 1;"
 
-# Execute SQL
+# Execute SQL - First query for all columns except secrets_content
 export PGPASSWORD="$DB_PASS"
-RESULT=$(echo "$SQL" | psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -A -F "|" 2>/dev/null || echo "")
+SQL_MAIN="SELECT app_name, github_url, main_file, target_branch, region, webhook_id, cloud_run_url 
+     FROM deployments 
+     WHERE (github_url = '$GITHUB_URL' OR github_url = '$NORMALIZED_URL' OR github_url = '$NORMALIZED_URL_WITH_GIT')
+       AND target_branch = '$TARGET_BRANCH'
+     LIMIT 1;"
+
+RESULT=$(echo "$SQL_MAIN" | psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -A -F "|" 2>/dev/null || echo "")
 
 if [[ -z "$RESULT" ]]; then
     error "No deployment found for: $GITHUB_URL (branch: $TARGET_BRANCH)"
 fi
 
-# Parse result and output as environment variables
-IFS="|" read -r APP_NAME GITHUB_URL MAIN_FILE TARGET_BRANCH REGION SECRETS_CONTENT WEBHOOK_ID CLOUD_RUN_URL <<< "$RESULT"
+# Parse result and output as environment variables (without secrets_content)
+IFS="|" read -r APP_NAME GITHUB_URL MAIN_FILE TARGET_BRANCH REGION WEBHOOK_ID CLOUD_RUN_URL <<< "$RESULT"
+
+# Second query for secrets_content only, preserving multiline content
+SECRETS_CONTENT=$(echo "SELECT secrets_content FROM deployments WHERE (github_url = '$GITHUB_URL' OR github_url = '$NORMALIZED_URL' OR github_url = '$NORMALIZED_URL_WITH_GIT') AND target_branch = '$TARGET_BRANCH' LIMIT 1;" | psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -A 2>/dev/null)
 
 echo "APP_NAME=$APP_NAME"
 echo "GITHUB_URL=$GITHUB_URL"

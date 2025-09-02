@@ -34,21 +34,16 @@ if [[ -f "/tmp/webhook_id_$APP_NAME" ]]; then
     WEBHOOK_ID=$(cat "/tmp/webhook_id_$APP_NAME" || echo "")
 fi
 
-# Use a temporary SQL file to handle special characters properly
+# Use a different approach: create a temporary file with the secrets content
+# and use PostgreSQL's COPY or a properly escaped approach
+SECRETS_FILE="/tmp/secrets_content_$$.txt"
+echo -n "$SECRETS_CONTENT" > "$SECRETS_FILE"
+
+# Create SQL file with dollar quoting for multiline content
 SQL_FILE="/tmp/store_deployment_$$.sql"
 
-# Escape single quotes in text values
-APP_NAME_ESCAPED=$(echo "$APP_NAME" | sed "s/'/''/g")
-GITHUB_URL_ESCAPED=$(echo "$GITHUB_URL" | sed "s/'/''/g")
-MAIN_FILE_ESCAPED=$(echo "$MAIN_FILE" | sed "s/'/''/g")
-SECRETS_CONTENT_ESCAPED=$(echo "$SECRETS_CONTENT" | sed "s/'/''/g")
-REGION_ESCAPED=$(echo "$REGION" | sed "s/'/''/g")
-TARGET_BRANCH_ESCAPED=$(echo "$TARGET_BRANCH" | sed "s/'/''/g")
-WEBHOOK_ID_ESCAPED=$(echo "$WEBHOOK_ID" | sed "s/'/''/g")
-SERVICE_URL_ESCAPED=$(echo "$SERVICE_URL" | sed "s/'/''/g")
-
-# Create SQL with proper escaping
-cat > "$SQL_FILE" << EOF
+# Use dollar-quoted strings to preserve multiline content
+cat > "$SQL_FILE" << 'SQLEOF'
 INSERT INTO deployments (
     app_name, 
     github_url, 
@@ -61,14 +56,18 @@ INSERT INTO deployments (
     created_at, 
     updated_at
 ) VALUES (
-    '$APP_NAME_ESCAPED',
-    '$GITHUB_URL_ESCAPED',
-    '$MAIN_FILE_ESCAPED',
-    '$SECRETS_CONTENT_ESCAPED',
-    '$REGION_ESCAPED',
-    '$TARGET_BRANCH_ESCAPED',
-    '$WEBHOOK_ID_ESCAPED',
-    '$SERVICE_URL_ESCAPED',
+SQLEOF
+
+# Append the values with proper escaping
+cat >> "$SQL_FILE" << EOF
+    '$APP_NAME',
+    '$GITHUB_URL',
+    '$MAIN_FILE',
+    \$SECRETS\$$(cat "$SECRETS_FILE")\$SECRETS\$,
+    '$REGION',
+    '$TARGET_BRANCH',
+    '$WEBHOOK_ID',
+    '$SERVICE_URL',
     NOW(),
     NOW()
 ) ON CONFLICT (app_name) DO UPDATE SET
@@ -87,12 +86,12 @@ export PGPASSWORD="$DB_PASS"
 if ! psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$SQL_FILE" 2>&1; then
     log "ERROR: SQL execution failed. SQL content:"
     cat "$SQL_FILE"
-    rm -f "$SQL_FILE"
+    rm -f "$SQL_FILE" "$SECRETS_FILE"
     error "Failed to store deployment metadata"
 fi
 
-# Clean up temporary file
-rm -f "$SQL_FILE"
+# Clean up temporary files
+rm -f "$SQL_FILE" "$SECRETS_FILE"
 
 log "Deployment metadata stored successfully"
 
