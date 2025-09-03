@@ -13,24 +13,26 @@ A comprehensive CI/CD platform for deploying Streamlit applications from GitHub 
 - **Access Control**: Role-based permissions for data scientists and administrators
 - **Audit Trail**: Complete deployment history and logging
 
-## Quick Start
+## Documentation
 
-📚 **[User Guide](docs/user-guide.md)** - Step-by-step guide for deploying Streamlit applications (with screenshots)
+📚 **[User Guide](docs/user-guide.md)** - Complete step-by-step guide for deploying Streamlit applications (with screenshots)
+
+📋 **Setup Guides:**
+- [Google Cloud Setup](docs/google-cloud-setup.md) - Service account and API configuration
+- [GitHub Setup](docs/github-setup.md) - Personal access token creation
+- [Webhook Setup](docs/WEBHOOK-SETUP.md) - Automatic redeployment configuration
+
+## Quick Start
 
 ### Prerequisites
 
-1. Google Cloud Project with enabled APIs:
-   - Cloud Run API
-   - Artifact Registry API
-   - Container Registry API
+1. **Google Cloud Project** with enabled APIs (Cloud Run, Artifact Registry, Container Registry)
+2. **Google Cloud Service Account** with required permissions
+3. **GitHub Personal Access Token** with webhook and repository access
 
-2. Google Cloud Service Account with required permissions
-   - See [Google Cloud Setup Guide](docs/google-cloud-setup.md) for detailed instructions
+> 📋 See the setup guides above for detailed configuration instructions
 
-3. GitHub Personal Access Token with required scopes
-   - See [GitHub Setup Guide](docs/github-setup.md) for detailed instructions
-
-### Setup
+### Installation
 
 1. **Clone the repository**:
    ```bash
@@ -38,21 +40,13 @@ A comprehensive CI/CD platform for deploying Streamlit applications from GitHub 
    cd streamlit-rundeck
    ```
 
-2. **Complete Google Cloud setup**:
-   - Follow the [Google Cloud Setup Guide](docs/google-cloud-setup.md)
-   - This will create your service account and download the key to `gcloud/service-account.json`
-
-3. **Complete GitHub setup**:
-   - Follow the [GitHub Setup Guide](docs/github-setup.md)
-   - This will create your Personal Access Token
-
-4. **Configure environment**:
+2. **Configure environment**:
    ```bash
    cp .env.example .env
    # Edit .env with your Google Cloud and GitHub configuration
    ```
 
-5. **Start the system**:
+3. **Start the system**:
    ```bash
    ./start.sh -d
    ```
@@ -62,25 +56,25 @@ A comprehensive CI/CD platform for deploying Streamlit applications from GitHub 
    DOCKER_GID=$(getent group docker | cut -d: -f3) docker compose up -d
    ```
 
-6. **Access Rundeck**:
+4. **Access Rundeck**:
    - URL: http://localhost:4440
    - Default credentials: admin/admin
 
-7. **Create the Streamlit project**:
+5. **Create the Streamlit project**:
    - Click the "+" button or "New Project" link on the Rundeck home page
    - Project Name: `streamlit-deployments`
    - Description: `Streamlit Application Deployment Pipeline for Data Scientists`
    - Click "Create"
 
-8. **Import job definitions**:
+6. **Import job definitions**:
    - Navigate to the `streamlit-deployments` project
    - In the Jobs section, click **"Upload a Job definition"**
    - Upload `rundeck-config/streamlit-deploy-job.yml`
    - Repeat to upload `rundeck-config/webhook-streamlit-redeploy.yml`
 
-9. **Configure webhooks for automatic redeployment**:
-   - Follow the [Webhook Setup Guide](docs/WEBHOOK-SETUP.md) to configure Rundeck webhooks
-   - This enables automatic redeployment when code is pushed to GitHub
+7. **Configure webhooks** (optional):
+   - Follow the [Webhook Setup Guide](docs/WEBHOOK-SETUP.md) to enable automatic redeployment
+   - This allows GitHub code pushes to trigger automatic app updates
 
 ### Updating Job Definitions
 
@@ -139,45 +133,34 @@ DEFAULT_CPU=1
 
 ## Usage
 
-### Deploy a Streamlit Application
+### For End Users (Data Scientists)
 
-1. Log into Rundeck web interface
-2. Navigate to the "streamlit-deployments" project
-3. Run the "Deploy Streamlit App" job with parameters:
-   - **GitHub URL**: Repository URL (e.g., `https://github.com/user/repo`)
-   - **Main File**: Streamlit entry point (e.g., `app.py`)
-   - **App Name**: Unique Cloud Run service name (lowercase, hyphens only)
-   - **Target Branch**: Branch to deploy (leave empty for auto-detection)
-   - **Secrets File**: Upload `.streamlit/secrets.toml` file (optional)
+📚 **[Complete User Guide](docs/user-guide.md)** provides step-by-step instructions with screenshots for:
+- Deploying your first Streamlit application
+- Multi-branch deployments (production, staging, feature branches)
+- Understanding automatic redeployment
+- Troubleshooting common issues
+- System limitations and workarounds
 
-**Note**: Infrastructure settings (region, memory, CPU) are now managed by DevOps through environment variables and no longer appear in the user interface.
+### Quick Reference
 
-### Multi-Branch Deployments
+**Deploy a Streamlit App:**
+1. Access Rundeck → `streamlit-deployments` project → Jobs → "Deploy Streamlit App"
+2. Fill required parameters: GitHub URL, App Name, Main File (default: `app.py`)
+3. Optional: Target Branch, Secrets File upload
+4. Run job and monitor logs for deployment URL
 
-Deploy different branches as separate services:
+**Key Features:**
+- **One-Click Deployment**: Simple web interface for non-technical users
+- **Multi-Branch Support**: Deploy different branches as separate services
+- **Automatic CI/CD**: GitHub webhooks trigger redeployments on code pushes
+- **Secure Secrets**: Upload sensitive configuration files safely
 
-```
-Repository: github.com/company/dashboard
-Branch: main → App: dashboard-prod → URL: https://dashboard-prod-xyz.run.app
-Branch: develop → App: dashboard-staging → URL: https://dashboard-staging-xyz.run.app
-```
+### For Administrators
 
-Each deployment:
-- Creates its own Cloud Run service
-- Has independent webhook monitoring
-- Maintains separate deployment metadata
+**Webhook Setup**: Follow the [Webhook Setup Guide](docs/WEBHOOK-SETUP.md) to configure automatic redeployment.
 
-### Automatic Redeployment
-
-After initial deployment and webhook configuration:
-1. GitHub webhook is automatically created during deployment
-2. Code pushes to the target branch trigger automatic redeployment
-3. Application is automatically updated with new code
-4. No manual intervention required
-
-For detailed webhook configuration instructions, see the [Webhook Setup Guide](docs/WEBHOOK-SETUP.md).
-
-**Important**: When configuring webhooks in the Rundeck UI, use `-webhook_payload ${raw}` in the Options field to ensure proper JSON payload handling.
+**Important**: When configuring webhooks in Rundeck UI, use `-webhook_payload ${raw}` in the Options field for proper JSON payload handling.
 
 ## Architecture
 
