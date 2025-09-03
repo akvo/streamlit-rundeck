@@ -15,6 +15,8 @@ A comprehensive CI/CD platform for deploying Streamlit applications from GitHub 
 
 ## Quick Start
 
+📚 **[User Guide](docs/user-guide.md)** - Step-by-step guide for deploying Streamlit applications (with screenshots)
+
 ### Prerequisites
 
 1. Google Cloud Project with enabled APIs:
