@@ -16,6 +16,13 @@ MAIN_FILE="${MAIN_FILE:-${RD_OPTION_MAIN_FILE}}"
 APP_NAME="${APP_NAME:-${RD_OPTION_APP_NAME}}"
 TARGET_BRANCH="${TARGET_BRANCH:-${RD_OPTION_TARGET_BRANCH}}"
 SECRETS_FILE="${SECRETS_FILE:-${RD_FILE_SECRETS_FILE:-}}"
+PROJECT_ID=${GCP_PROJECT_ID}
+ARTIFACT_REGISTRY=${ARTIFACT_REGISTRY_URL}
+GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
+GITHUB_TOKEN=${GITHUB_API_TOKEN}
+WEBHOOK_SECRET=${RUNDECK_WEBHOOK_SECRET}
+WEBHOOK_URL=${WEBHOOK_URL}
+DOMAIN=${RD_OPTION_DOMAIN:-}
 
 # Required environment variables
 : "${GITHUB_URL:?GITHUB_URL is required}"
@@ -23,6 +30,12 @@ SECRETS_FILE="${SECRETS_FILE:-${RD_FILE_SECRETS_FILE:-}}"
 : "${APP_NAME:?APP_NAME is required}"
 : "${PROJECT_ID:?PROJECT_ID is required}"
 : "${ARTIFACT_REGISTRY:?ARTIFACT_REGISTRY is required}"
+
+if [[ -z "${DOMAIN}" ]]; then
+  echo "Warning: DOMAIN is not set. Continuing without it..."
+else
+  echo "Using DOMAIN: $DOMAIN"
+fi
 
 # Optional environment variables
 SECRETS_CONTENT="${SECRETS_CONTENT:-}"
@@ -66,6 +79,17 @@ fi
 
 if [[ ! "$APP_NAME" =~ ^[a-z0-9-]+$ ]]; then
     error "Invalid app name format: $APP_NAME (use lowercase letters, numbers, and hyphens only)"
+fi
+
+
+if [[ -n "${DOMAIN}" ]]; then
+# Check existing domain
+if gcloud beta run domain-mappings describe --domain "$DOMAIN" \
+    --region="europe-west1" \
+    --project="akvo-staging" &> /dev/null; then
+    log "Domain $DOMAIN already exists. Exiting..."
+    exit 0
+fi
 fi
 
 # Step 2: Detect or validate target branch
@@ -155,6 +179,7 @@ docker push "$LATEST_TAG" || error "Failed to push latest tag: $LATEST_TAG"
 
 # Step 7: Deploy to Cloud Run
 log "Step 7: Deploying to Cloud Run"
+
 gcloud run deploy "$APP_NAME" \
     --image="$LATEST_TAG" \
     --platform=managed \
@@ -165,6 +190,16 @@ gcloud run deploy "$APP_NAME" \
     --project="$PROJECT_ID" \
     --quiet || error "Failed to deploy to Cloud Run"
 
+if [[ -n "${DOMAIN}" ]]; then
+# Create domain mapping
+gcloud beta run domain-mappings create --service "$APP_NAME" --domain "$DOMAIN" \
+    --region="europe-west1" \
+    --project="akvo-staging" || {
+    log "Failed to create domain mapping"
+    exit 1
+}
+fi
+
 # Get service URL
 SERVICE_URL=$(gcloud run services describe "$APP_NAME" \
     --region="$REGION" \
@@ -172,7 +207,10 @@ SERVICE_URL=$(gcloud run services describe "$APP_NAME" \
     --format="value(status.url)") || error "Failed to get service URL"
 
 log "Application deployed successfully!"
-log "Service URL: $SERVICE_URL"
+log "Main Service URL: $SERVICE_URL"
+if [[ -n "${DOMAIN}" ]]; then
+log "Domain URL: $DOMAIN"
+fi
 
 # Step 8: Create GitHub webhook
 log "Step 8: Creating GitHub webhook"

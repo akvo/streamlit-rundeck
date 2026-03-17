@@ -10,6 +10,7 @@ GITHUB_URL="$1"
 TARGET_BRANCH="$2"
 WEBHOOK_URL="$3"
 WEBHOOK_SECRET="$4"
+GITHUB_TOKEN=${GITHUB_API_TOKEN}
 
 # Extract repository path from URL
 REPO_PATH=$(echo "$GITHUB_URL" | sed 's|https://github.com/||' | sed 's|\.git$||')
