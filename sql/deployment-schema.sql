@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     target_branch VARCHAR(100) NOT NULL,
     webhook_id VARCHAR(50),
     cloud_run_url VARCHAR(500),
+    domain VARCHAR(255),
     memory VARCHAR(10) DEFAULT '1Gi',
     cpu VARCHAR(10) DEFAULT '1',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -88,6 +88,7 @@ APP_NAME=$(echo "$DEPLOYMENT_INFO" | grep "^APP_NAME=" | cut -d= -f2)
 TARGET_BRANCH=$(echo "$DEPLOYMENT_INFO" | grep "^TARGET_BRANCH=" | cut -d= -f2)
 MAIN_FILE=$(echo "$DEPLOYMENT_INFO" | grep "^MAIN_FILE=" | cut -d= -f2)
 REGION=$(echo "$DEPLOYMENT_INFO" | grep "^REGION=" | cut -d= -f2)
+DOMAIN=$(echo "$DEPLOYMENT_INFO" | grep "^DOMAIN=" | cut -d= -f2)
 
 # Extract multiline secrets content properly (everything after SECRETS_CONTENT= until WEBHOOK_ID=)
 SECRETS_CONTENT=$(echo "$DEPLOYMENT_INFO" | sed -n '/^SECRETS_CONTENT=/,/^WEBHOOK_ID=/p' | sed '1s/^SECRETS_CONTENT=//' | sed '$d')
@@ -115,6 +116,7 @@ export APP_NAME="$APP_NAME"
 export TARGET_BRANCH="$TARGET_BRANCH"
 export REGION="$REGION"
 export SECRETS_CONTENT="$SECRETS_CONTENT"
+export DOMAIN="${DOMAIN:-}"
 export MEMORY="${MEMORY:-1Gi}"
 export CPU="${CPU:-1}"
 

@@ -34,8 +34,8 @@ SQL="SELECT app_name, github_url, main_file, target_branch, region, secrets_cont
 
 # Execute SQL - First query for all columns except secrets_content
 export PGPASSWORD="$DB_PASS"
-SQL_MAIN="SELECT app_name, github_url, main_file, target_branch, region, webhook_id, cloud_run_url 
-     FROM deployments 
+SQL_MAIN="SELECT app_name, github_url, main_file, target_branch, region, webhook_id, cloud_run_url, domain
+     FROM deployments
      WHERE (github_url = '$GITHUB_URL' OR github_url = '$NORMALIZED_URL' OR github_url = '$NORMALIZED_URL_WITH_GIT')
        AND target_branch = '$TARGET_BRANCH'
      LIMIT 1;"
@@ -47,7 +47,7 @@ if [[ -z "$RESULT" ]]; then
 fi
 
 # Parse result and output as environment variables (without secrets_content)
-IFS="|" read -r APP_NAME GITHUB_URL MAIN_FILE TARGET_BRANCH REGION WEBHOOK_ID CLOUD_RUN_URL <<< "$RESULT"
+IFS="|" read -r APP_NAME GITHUB_URL MAIN_FILE TARGET_BRANCH REGION WEBHOOK_ID CLOUD_RUN_URL DOMAIN <<< "$RESULT"
 
 # Second query for secrets_content only, preserving multiline content
 SECRETS_CONTENT=$(echo "SELECT secrets_content FROM deployments WHERE (github_url = '$GITHUB_URL' OR github_url = '$NORMALIZED_URL' OR github_url = '$NORMALIZED_URL_WITH_GIT') AND target_branch = '$TARGET_BRANCH' LIMIT 1;" | psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -A 2>/dev/null)
@@ -60,3 +60,4 @@ echo "REGION=$REGION"
 echo "SECRETS_CONTENT=$SECRETS_CONTENT"
 echo "WEBHOOK_ID=$WEBHOOK_ID"
 echo "CLOUD_RUN_URL=$CLOUD_RUN_URL"
+echo "DOMAIN=$DOMAIN"

@@ -22,7 +22,7 @@ GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
 GITHUB_TOKEN=${GITHUB_API_TOKEN}
 WEBHOOK_SECRET=${RUNDECK_WEBHOOK_SECRET}
 WEBHOOK_URL=${WEBHOOK_URL}
-DOMAIN=${RD_OPTION_DOMAIN:-}
+DOMAIN="${DOMAIN:-${RD_OPTION_DOMAIN:-}}"
 
 # Required environment variables
 : "${GITHUB_URL:?GITHUB_URL is required}"
@@ -81,16 +81,6 @@ if [[ ! "$APP_NAME" =~ ^[a-z0-9-]+$ ]]; then
     error "Invalid app name format: $APP_NAME (use lowercase letters, numbers, and hyphens only)"
 fi
 
-
-if [[ -n "${DOMAIN}" ]]; then
-# Check existing domain
-if gcloud beta run domain-mappings describe --domain "$DOMAIN" \
-    --region="europe-west1" \
-    --project="akvo-staging" &> /dev/null; then
-    log "Domain $DOMAIN already exists. Exiting..."
-    exit 0
-fi
-fi
 
 # Step 2: Detect or validate target branch
 log "Step 2: Processing target branch"
@@ -191,13 +181,18 @@ gcloud run deploy "$APP_NAME" \
     --quiet || error "Failed to deploy to Cloud Run"
 
 if [[ -n "${DOMAIN}" ]]; then
-# Create domain mapping
-gcloud beta run domain-mappings create --service "$APP_NAME" --domain "$DOMAIN" \
-    --region="europe-west1" \
-    --project="akvo-staging" || {
-    log "Failed to create domain mapping"
-    exit 1
-}
+    if gcloud beta run domain-mappings describe --domain "$DOMAIN" \
+        --region="$REGION" \
+        --project="$PROJECT_ID" &> /dev/null; then
+        log "Domain mapping for $DOMAIN already exists, skipping creation"
+    else
+        gcloud beta run domain-mappings create --service "$APP_NAME" --domain "$DOMAIN" \
+            --region="$REGION" \
+            --project="$PROJECT_ID" || {
+            log "Failed to create domain mapping"
+            exit 1
+        }
+    fi
 fi
 
 # Get service URL
@@ -240,7 +235,8 @@ log "Step 9: Storing deployment metadata"
     "$TARGET_BRANCH" \
     "$REGION" \
     "$SERVICE_URL" \
-    "${SECRETS_CONTENT:-}" || {
+    "${SECRETS_CONTENT:-}" \
+    "${DOMAIN:-}" || {
     log "WARNING: Failed to store deployment metadata"
 }
 

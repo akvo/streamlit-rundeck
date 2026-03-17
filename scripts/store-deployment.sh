@@ -13,6 +13,7 @@ TARGET_BRANCH="$4"
 REGION="$5"
 SERVICE_URL="$6"
 SECRETS_CONTENT="${7:-}"
+DOMAIN="${8:-}"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] STORE-DEPLOY: $*"
@@ -51,9 +52,10 @@ INSERT INTO deployments (
     secrets_content, 
     region, 
     target_branch, 
-    webhook_id, 
-    cloud_run_url, 
-    created_at, 
+    webhook_id,
+    cloud_run_url,
+    domain,
+    created_at,
     updated_at
 ) VALUES (
 SQLEOF
@@ -68,6 +70,7 @@ cat >> "$SQL_FILE" << EOF
     '$TARGET_BRANCH',
     '$WEBHOOK_ID',
     '$SERVICE_URL',
+    '$DOMAIN',
     NOW(),
     NOW()
 ) ON CONFLICT (app_name) DO UPDATE SET
@@ -78,6 +81,7 @@ cat >> "$SQL_FILE" << EOF
     target_branch = EXCLUDED.target_branch,
     webhook_id = EXCLUDED.webhook_id,
     cloud_run_url = EXCLUDED.cloud_run_url,
+    domain = EXCLUDED.domain,
     updated_at = NOW();
 EOF
 

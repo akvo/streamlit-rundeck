@@ -44,7 +44,10 @@ export PGPASSWORD="$DB_PASS"
 EXISTING_TABLES=$(psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('deployments', 'deployment_history');" 2>/dev/null | grep -cE "^\s*(deployments|deployment_history)\s*$" || echo "0")
 
 if [ "$EXISTING_TABLES" -eq 2 ]; then
-    log "Deployment schema already exists, skipping creation"
+    log "Deployment schema already exists, applying migrations"
+    psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c \
+        "ALTER TABLE deployments ADD COLUMN IF NOT EXISTS domain VARCHAR(255);" || \
+        error "Failed to apply domain column migration"
 else
     log "Creating deployment tracking schema..."
     psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "/home/streamlit-rundeck/streamlit-rundeck/sql/deployment-schema.sql" || error "Failed to create schema"
