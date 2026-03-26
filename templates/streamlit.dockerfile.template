@@ -10,6 +10,13 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements first for better caching
 COPY requirements.txt* ./
+
+# Install CPU-only PyTorch when torch dependencies are detected.
+# Cloud Run is CPU-only, so CUDA packages are unnecessary and waste ~2GB of space.
+RUN if [ -f requirements.txt ] && grep -qiE 'torch|sentence-transformers|transformers' requirements.txt; then \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu; \
+fi
+
 RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
 
 # Install streamlit if not in requirements
