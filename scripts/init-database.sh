@@ -50,7 +50,7 @@ if [ "$EXISTING_TABLES" -eq 2 ]; then
         error "Failed to apply domain column migration"
 else
     log "Creating deployment tracking schema..."
-    psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "/home/streamlit-rundeck/streamlit-rundeck/sql/deployment-schema.sql" || error "Failed to create schema"
+    psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "$SCRIPT_DIR/../sql/deployment-schema.sql" || error "Failed to create schema"
     
     # Verify tables were created
     log "Verifying table creation..."
