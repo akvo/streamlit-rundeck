@@ -75,64 +75,114 @@ log "Pusher: $PUSHER_NAME"
 
 # Step 2: Lookup deployment metadata
 log "Step 2: Looking up deployment metadata"
-DEPLOYMENT_INFO=$("$SCRIPT_DIR/get-deployment.sh" "$REPO_URL" "$PUSHED_BRANCH" 2>/dev/null || echo "")
+ALL_DEPLOYMENT_INFO=$("$SCRIPT_DIR/get-deployment.sh" "$REPO_URL" "$PUSHED_BRANCH" 2>/dev/null || echo "")
 
-if [[ -z "$DEPLOYMENT_INFO" ]]; then
+if [[ -z "$ALL_DEPLOYMENT_INFO" ]]; then
     log "No deployment found for repository: $REPO_URL (branch: $PUSHED_BRANCH)"
     log "This webhook will be ignored"
     exit 0
 fi
 
-# Parse deployment info
-APP_NAME=$(echo "$DEPLOYMENT_INFO" | grep "^APP_NAME=" | cut -d= -f2)
-TARGET_BRANCH=$(echo "$DEPLOYMENT_INFO" | grep "^TARGET_BRANCH=" | cut -d= -f2)
-MAIN_FILE=$(echo "$DEPLOYMENT_INFO" | grep "^MAIN_FILE=" | cut -d= -f2)
-REGION=$(echo "$DEPLOYMENT_INFO" | grep "^REGION=" | cut -d= -f2)
-DOMAIN=$(echo "$DEPLOYMENT_INFO" | grep "^DOMAIN=" | cut -d= -f2)
+# Split deployments by delimiter (---) and count them
+DEPLOY_COUNT=$(echo "$ALL_DEPLOYMENT_INFO" | grep -c "^APP_NAME=" || true)
+log "Found $DEPLOY_COUNT deployment(s) matching this repository and branch"
 
-# Extract multiline secrets content properly (everything after SECRETS_CONTENT= until WEBHOOK_ID=)
-SECRETS_CONTENT=$(echo "$DEPLOYMENT_INFO" | sed -n '/^SECRETS_CONTENT=/,/^WEBHOOK_ID=/p' | sed '1s/^SECRETS_CONTENT=//' | sed '$d')
+# Step 3: Redeploy each matching deployment
+DEPLOYED_APPS=()
+FAILED_APPS=()
+DEPLOYMENT_BLOCK=""
 
-log "Found deployment: $APP_NAME"
-log "Target branch: $TARGET_BRANCH"
+while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" == "---" ]] || [[ -z "$line" && -n "$DEPLOYMENT_BLOCK" ]]; then
+        # Process accumulated block
+        if [[ -n "$DEPLOYMENT_BLOCK" ]]; then
+            APP_NAME=$(echo "$DEPLOYMENT_BLOCK" | grep "^APP_NAME=" | cut -d= -f2)
+            TARGET_BRANCH=$(echo "$DEPLOYMENT_BLOCK" | grep "^TARGET_BRANCH=" | cut -d= -f2)
+            MAIN_FILE=$(echo "$DEPLOYMENT_BLOCK" | grep "^MAIN_FILE=" | cut -d= -f2)
+            REGION=$(echo "$DEPLOYMENT_BLOCK" | grep "^REGION=" | cut -d= -f2)
+            DOMAIN=$(echo "$DEPLOYMENT_BLOCK" | grep "^DOMAIN=" | cut -d= -f2)
+            SECRETS_CONTENT=$(echo "$DEPLOYMENT_BLOCK" | sed -n '/^SECRETS_CONTENT=/,/^WEBHOOK_ID=/p' | sed '1s/^SECRETS_CONTENT=//' | sed '$d')
 
-# Step 3: Filter by branch
-log "Step 3: Checking branch filter"
-if [[ "$PUSHED_BRANCH" != "$TARGET_BRANCH" ]]; then
-    log "Push to branch '$PUSHED_BRANCH' does not match target branch '$TARGET_BRANCH'"
-    log "Ignoring this webhook"
-    exit 0
+            if [[ "$PUSHED_BRANCH" != "$TARGET_BRANCH" ]]; then
+                log "Skipping $APP_NAME: pushed branch '$PUSHED_BRANCH' != target '$TARGET_BRANCH'"
+            else
+                log "Redeploying $APP_NAME from commit $COMMIT_SHA"
+
+                export GITHUB_URL="$REPO_URL"
+                export MAIN_FILE="$MAIN_FILE"
+                export APP_NAME="$APP_NAME"
+                export TARGET_BRANCH="$TARGET_BRANCH"
+                export REGION="$REGION"
+                export SECRETS_CONTENT="$SECRETS_CONTENT"
+                export DOMAIN="${DOMAIN:-}"
+                export MEMORY="${MEMORY:-1Gi}"
+                export CPU="${CPU:-1}"
+
+                if "$SCRIPT_DIR/deploy-streamlit.sh"; then
+                    log "Redeployment of $APP_NAME completed successfully"
+                    DEPLOYED_APPS+=("$APP_NAME")
+                else
+                    log "ERROR: Redeployment of $APP_NAME failed"
+                    FAILED_APPS+=("$APP_NAME")
+                fi
+            fi
+            DEPLOYMENT_BLOCK=""
+        fi
+        continue
+    fi
+    DEPLOYMENT_BLOCK="${DEPLOYMENT_BLOCK}${line}"$'\n'
+done <<< "$ALL_DEPLOYMENT_INFO"
+
+# Process the last block (no trailing ---)
+if [[ -n "$DEPLOYMENT_BLOCK" ]]; then
+    APP_NAME=$(echo "$DEPLOYMENT_BLOCK" | grep "^APP_NAME=" | cut -d= -f2)
+    TARGET_BRANCH=$(echo "$DEPLOYMENT_BLOCK" | grep "^TARGET_BRANCH=" | cut -d= -f2)
+    MAIN_FILE=$(echo "$DEPLOYMENT_BLOCK" | grep "^MAIN_FILE=" | cut -d= -f2)
+    REGION=$(echo "$DEPLOYMENT_BLOCK" | grep "^REGION=" | cut -d= -f2)
+    DOMAIN=$(echo "$DEPLOYMENT_BLOCK" | grep "^DOMAIN=" | cut -d= -f2)
+    SECRETS_CONTENT=$(echo "$DEPLOYMENT_BLOCK" | sed -n '/^SECRETS_CONTENT=/,/^WEBHOOK_ID=/p' | sed '1s/^SECRETS_CONTENT=//' | sed '$d')
+
+    if [[ "$PUSHED_BRANCH" != "$TARGET_BRANCH" ]]; then
+        log "Skipping $APP_NAME: pushed branch '$PUSHED_BRANCH' != target '$TARGET_BRANCH'"
+    else
+        log "Redeploying $APP_NAME from commit $COMMIT_SHA"
+
+        export GITHUB_URL="$REPO_URL"
+        export MAIN_FILE="$MAIN_FILE"
+        export APP_NAME="$APP_NAME"
+        export TARGET_BRANCH="$TARGET_BRANCH"
+        export REGION="$REGION"
+        export SECRETS_CONTENT="$SECRETS_CONTENT"
+        export DOMAIN="${DOMAIN:-}"
+        export MEMORY="${MEMORY:-1Gi}"
+        export CPU="${CPU:-1}"
+
+        if "$SCRIPT_DIR/deploy-streamlit.sh"; then
+            log "Redeployment of $APP_NAME completed successfully"
+            DEPLOYED_APPS+=("$APP_NAME")
+        else
+            log "ERROR: Redeployment of $APP_NAME failed"
+            FAILED_APPS+=("$APP_NAME")
+        fi
+    fi
 fi
 
-log "Branch matches target, proceeding with redeployment"
-
-# Step 4: Execute redeployment
-log "Step 4: Starting automatic redeployment"
-log "Triggering redeployment for $APP_NAME from commit $COMMIT_SHA"
-
-export GITHUB_URL="$REPO_URL"
-export MAIN_FILE="$MAIN_FILE"
-export APP_NAME="$APP_NAME"
-export TARGET_BRANCH="$TARGET_BRANCH"
-export REGION="$REGION"
-export SECRETS_CONTENT="$SECRETS_CONTENT"
-export DOMAIN="${DOMAIN:-}"
-export MEMORY="${MEMORY:-1Gi}"
-export CPU="${CPU:-1}"
-
-# Call main deployment script
-"$SCRIPT_DIR/deploy-streamlit.sh" || error "Redeployment failed"
-
-log "Automatic redeployment completed successfully"
+log "Redeployment summary: ${#DEPLOYED_APPS[@]} succeeded, ${#FAILED_APPS[@]} failed"
 log "Triggered by: $PUSHER_NAME"
 log "Commit: $COMMIT_SHA"
 
+# Fail if any deployment failed
+if [[ ${#FAILED_APPS[@]} -gt 0 ]]; then
+    error "Redeployment failed for: ${FAILED_APPS[*]}"
+fi
+
 # Output for webhook response
+DEPLOYED_JSON=$(printf '"%s",' "${DEPLOYED_APPS[@]}" | sed 's/,$//')
 cat << EOF
 {
   "status": "success",
-  "message": "Automatic redeployment completed",
-  "app_name": "$APP_NAME",
+  "message": "Automatic redeployment completed for ${#DEPLOYED_APPS[@]} service(s)",
+  "apps": [$DEPLOYED_JSON],
   "commit": "$COMMIT_SHA",
   "branch": "$PUSHED_BRANCH",
   "pusher": "$PUSHER_NAME"

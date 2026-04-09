@@ -201,6 +201,84 @@ The system uses PostgreSQL tables for deployment tracking:
 - **deployments**: Main deployment metadata
 - **deployment_history**: Audit trail for all deployments
 
+## Production Deployment
+
+### Infrastructure
+
+Production runs on VM `10.0.0.3` with a different architecture than the repo's `compose.yml`:
+
+- **Rundeck** uses the vanilla `rundeck/rundeck:5.8.0` image (not the custom Dockerfile).
+- **Scripts execute on the host VM** via SSH, not inside the Rundeck container.
+- Rundeck SSHs into `streamlit-rundeck@10.0.0.3` using a stored private key.
+- All required tools (`gcloud`, `docker`, `git`, `psql`, `jq`) are installed on the host.
+
+```
+┌─ VM 10.0.0.3 ────────────────────────────────────────────────┐
+│                                                                │
+│  Docker containers:                                            │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  rundeck          (rundeck/rundeck:5.8.0, port 4440)    │ │
+│  │  rundeck-postgres-1  (postgres, port 5432)              │ │
+│  │  nginx-proxy-manager (ports 80, 81, 443)                │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│       │                                                        │
+│       │ SSH (streamlit-rundeck@10.0.0.3)                       │
+│       ▼                                                        │
+│  Host: /home/streamlit-rundeck/streamlit-rundeck/              │
+│    scripts/deploy-streamlit.sh                                 │
+│    scripts/webhook-redeploy.sh                                 │
+│    Tools: gcloud, docker, git, psql, jq                        │
+│       │                              │                         │
+│       ▼                              ▼                         │
+│  GitHub (clone + webhooks)    GCP Cloud Run (europe-west1)     │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Prod vs Repo Differences
+
+| Aspect | Repo (compose.yml) | Production |
+|--------|-------------------|------------|
+| Rundeck image | Custom `Dockerfile.rundeck` (tools baked in) | Vanilla `rundeck/rundeck:5.8.0` |
+| Script execution | Local (inside container) | SSH to host `streamlit-rundeck@10.0.0.3` |
+| Rundeck version | 5.14.1 | 5.8.0 |
+| DB credentials | `rundeck` / `rundeck` / `rundeckpassword` | `akvo-rundeck` / `akvo-rundeck-db` / custom |
+| Reverse proxy | None | Nginx Proxy Manager |
+| URL | `http://localhost:4440` | `https://rundeck.internal.akvo.org` |
+
+### Rundeck Node Configuration
+
+Rundeck has two nodes configured:
+
+| Node | Hostname | User | Auth Method |
+|------|----------|------|-------------|
+| Rundeck server (local) | container ID | rundeck | local |
+| vm-streamlit-deployment | 10.0.0.3 | streamlit-rundeck | SSH key (`keys/project/streamlit-deployments/streamlit-vm-key`) |
+
+### Access
+
+- **Rundeck UI**: `https://rundeck.internal.akvo.org`
+- **VM SSH**: `ssh akvo@10.0.0.3` then `sudo -u streamlit-rundeck -i`
+- **DB query**: `docker exec rundeck-postgres-1 psql -U akvo-rundeck -d akvo-rundeck-db`
+
+### Deployed Apps
+
+All apps run on Cloud Run in `europe-west1` with 1Gi memory / 1 CPU.
+
+| App Name | GitHub Repo | Branch | Custom Domain | Last Updated |
+|----------|-------------|--------|---------------|--------------|
+| agriconnect-stats | akvo/agriconnect-stats | main | - | 2026-04-07 |
+| acorn-dqm-test | akvo/acorn-dqm-streamlit | version-two | - | 2026-04-06 |
+| crop-monitor | akvo/spamApp | main | crop-monitor.data.akvotest.org | 2026-04-05 |
+| nbd-maps | akvo/nbd-streamlit | main | - | 2026-03-31 |
+| zhdl-secrets-test | akvo/spamApp | use-pytorch-non-gpu | zhdl-secrets-test.data.akvotest.org | 2026-03-30 |
+| aswa-rmi-streamlit | akvo/aswa-rmi-steamlit | main | - | 2026-03-02 |
+| nbd-data | akvo/nbd-streamlit | main | - | 2026-01-21 |
+| idh-mock-streamlit | akvo/idh-mock-streamlit | main | - | 2025-12-17 |
+| acorn-backup | akvo/acorn-dqm-streamlit | backup | - | 2025-11-10 |
+| new-streamlit-ok | akvo/streamlit-test-app | main | - | 2025-10-02 |
+| oak-wash-sb | akvo/oak-india-streamlit | main | - | 2025-09-13 |
+| test-the-streamlit | akvo/streamlit-test-app | main | - | 2025-09-11 |
+
 ## Security
 
 ### Access Control

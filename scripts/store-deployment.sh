@@ -81,7 +81,7 @@ cat >> "$SQL_FILE" << EOF
     target_branch = EXCLUDED.target_branch,
     webhook_id = EXCLUDED.webhook_id,
     cloud_run_url = EXCLUDED.cloud_run_url,
-    domain = EXCLUDED.domain,
+    domain = CASE WHEN EXCLUDED.domain = '' THEN deployments.domain ELSE EXCLUDED.domain END,
     updated_at = NOW();
 EOF
 
