@@ -279,6 +279,43 @@ All apps run on Cloud Run in `europe-west1` with 1Gi memory / 1 CPU.
 | oak-wash-sb | akvo/oak-india-streamlit | main | - | 2025-09-13 |
 | test-the-streamlit | akvo/streamlit-test-app | main | - | 2025-09-11 |
 
+## Cost Monitoring (Labels)
+
+Each Cloud Run service is tagged with labels for per-app cost breakdown in
+GCP billing reports. Labels are applied automatically on every deployment.
+
+### Label Schema
+
+| Label | Source | Example |
+|-------|--------|---------|
+| `app` | app_name (sanitized) | `agriconnect-stats-prod` |
+| `environment` | `prod` if app name ends with `-prod`, else `test` | `prod` |
+| `managed-by` | Fixed value | `streamlit-rundeck` |
+| `repo` | GitHub URL (stripped of `https://github.com/` and `.git`) | `akvo-agriconnect-stats` |
+| `branch` | Target branch (sanitized) | `main` |
+
+Sanitization rules: lowercase, non-alphanumeric chars replaced with `-`,
+trimmed to 63 characters, leading/trailing dashes removed.
+
+### Viewing Costs
+
+In GCP Billing console → Reports, filter or group by label key (e.g. `app`
+or `environment`) to see cost per Streamlit service.
+
+### Retroactive Labeling
+
+For services that existed before labels were introduced, run:
+
+```bash
+cd /home/streamlit-rundeck/streamlit-rundeck
+source .env
+export GCP_PROJECT_ID DEFAULT_REGION DB_HOST DB_NAME DB_USER DB_PASSWORD
+scripts/apply-labels.sh
+```
+
+This reads all entries from the `deployments` table and applies labels to
+each existing Cloud Run service.
+
 ## Security
 
 ### Access Control

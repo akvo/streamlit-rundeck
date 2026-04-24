@@ -170,6 +170,28 @@ docker push "$LATEST_TAG" || error "Failed to push latest tag: $LATEST_TAG"
 # Step 7: Deploy to Cloud Run
 log "Step 7: Deploying to Cloud Run"
 
+# Sanitize label values: lowercase, replace invalid chars with -, trim to 63 chars
+sanitize_label() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' \
+        | sed -E 's|^https?://github\.com/||; s|\.git$||' \
+        | sed -E 's/[^a-z0-9_-]+/-/g; s/^-+|-+$//g' \
+        | cut -c1-63
+}
+
+# Environment: prod if app name ends with -prod, else test
+if [[ "$APP_NAME" == *-prod ]]; then
+    ENVIRONMENT="prod"
+else
+    ENVIRONMENT="test"
+fi
+
+LABEL_APP=$(sanitize_label "$APP_NAME")
+LABEL_REPO=$(sanitize_label "$GITHUB_URL")
+LABEL_BRANCH=$(sanitize_label "$TARGET_BRANCH")
+LABELS="app=${LABEL_APP},environment=${ENVIRONMENT},managed-by=streamlit-rundeck,repo=${LABEL_REPO},branch=${LABEL_BRANCH}"
+
+log "Applying labels: $LABELS"
+
 gcloud run deploy "$APP_NAME" \
     --image="$LATEST_TAG" \
     --platform=managed \
@@ -178,6 +200,7 @@ gcloud run deploy "$APP_NAME" \
     --memory="$MEMORY" \
     --cpu="$CPU" \
     --project="$PROJECT_ID" \
+    --labels="$LABELS" \
     --quiet || error "Failed to deploy to Cloud Run"
 
 if [[ -n "${DOMAIN}" ]]; then
