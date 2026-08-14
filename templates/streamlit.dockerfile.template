@@ -9,19 +9,32 @@ RUN apt-get update && apt-get install -y \
     libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Global pip constraints applied to every install below.
+# Guards against transitive deps whose newest release breaks Streamlit on arrival.
+# 2026-08-14: starlette 1.4.0 made GZipResponder.__init__() require a keyword-only
+# arg `thread_minimum_size`, which Streamlit's gzip middleware does not pass ->
+# TypeError -> HTTP 500 on every gzip response (all browser requests). Streamlit
+# itself now caps starlette<1.4.0 (>=1.61.1). Remove this only once the Streamlit
+# version being deployed officially supports starlette>=1.4.0.
+RUN printf 'starlette<1.4.0\n' > /tmp/constraints.txt
+
 # Copy requirements first for better caching
 COPY requirements.txt* ./
 
 # Install CPU-only PyTorch when torch dependencies are detected.
 # Cloud Run is CPU-only, so CUDA packages are unnecessary and waste ~2GB of space.
 RUN if [ -f requirements.txt ] && grep -qiE 'torch|sentence-transformers|transformers' requirements.txt; then \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu; \
+    pip install --no-cache-dir -c /tmp/constraints.txt torch --index-url https://download.pytorch.org/whl/cpu; \
 fi
 
-RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -c /tmp/constraints.txt -r requirements.txt; fi
 
-# Install streamlit if not in requirements
-RUN pip install --no-cache-dir streamlit
+# Install streamlit only if the app did not already declare it. This respects the
+# app's own pinned version instead of unconditionally upgrading to latest, and stays
+# bounded by the constraints above.
+RUN if ! python -c "import streamlit" 2>/dev/null; then \
+    pip install --no-cache-dir -c /tmp/constraints.txt streamlit; \
+fi
 
 # Copy application code
 COPY . .
