@@ -1,66 +1,105 @@
 - defaultTab: nodes
-  description: Deploy Streamlit applications from GitHub to Google Cloud Run with automatic CI/CD setup
+  description: Deploy Streamlit applications from GitHub to Google Cloud Run with
+    automatic CI/CD setup
   executionEnabled: true
-  id: streamlit-deploy
+  id: 12345678-1234-5678-9abc-123456789012
   loglevel: INFO
   name: Deploy Streamlit App
   nodeFilterEditable: false
+  nodefilters:
+    dispatch:
+      excludePrecedence: true
+      keepgoing: false
+      rankOrder: ascending
+      successOnEmptyNodeFilter: false
+      threadcount: '1'
+    filter: 'name: vm-streamlit-deployment '
+  nodesSelectedByDefault: true
+  options:
+  - description: GitHub repository URL (https://github.com/user/repo)
+    name: github_url
+    required: true
+    type: text
+  - description: Git branch to deploy (leave empty to auto-detect default branch)
+    name: target_branch
+    type: text
+  - description: Main Python file for the Streamlit application
+    name: main_file
+    required: true
+    type: text
+    value: app.py
+  - description: 'Unique name for the Cloud Run service (lowercase, hyphens only)'
+    name: app_name
+    required: true
+    type: text
+  - description: |-
+      Fill with full subdomain URL. Example: streamlit-africa.data.akvotest.org.
+      Please enter a domain using only alphabetical characters (A–Z) or numbers (1–9).
+    label: domain
+    name: domain
+    required: true
+  - description: Upload .streamlit/secrets.toml file (optional)
+    name: secrets_file
+    type: file
   plugins:
     ExecutionLifecycle: {}
   scheduleEnabled: true
   sequence:
     commands:
     - description: Initialize database schema if needed
-      exec: /scripts/init-database.sh
+      exec: export $(grep -v '^#' /home/streamlit-rundeck/streamlit-rundeck/.env |
+        xargs) && /home/streamlit-rundeck/streamlit-rundeck/scripts/init-database.sh
     - description: Validate input parameters
       exec: |
         echo "Validating deployment parameters..."
-        
+
         # Validate GitHub URL format
         if [[ ! "${option.github_url}" =~ ^https://github\.com/.+/.+ ]]; then
           echo "ERROR: Invalid GitHub URL format. Must be https://github.com/user/repo"
           exit 1
         fi
-        
+
         # Validate app name format
         if [[ ! "${option.app_name}" =~ ^[a-z0-9-]+$ ]]; then
           echo "ERROR: Invalid app name. Use only lowercase letters, numbers, and hyphens"
           exit 1
         fi
-        
+
         # Validate main file extension
         if [[ ! "${option.main_file}" =~ \.py$ ]]; then
           echo "ERROR: Main file must be a Python file (.py extension)"
           exit 1
         fi
-        
+
         echo "All parameters validated successfully"
+    - configuration:
+        destinationPath: /tmp/rundeck-secrets-upload.toml
+        sourcePath: ${file.secrets_file}
+      description: Copy secrets file to node
+      errorhandler:
+        exec: 'echo "No secrets file provided, skipping"'
+        keepgoingOnSuccess: true
+      nodeStep: true
+      type: copyfile
     - description: Execute Streamlit deployment
-      exec: /scripts/deploy-streamlit.sh
+      script: |-
+        #!/bin/bash
+        set -euo pipefail
+
+        # Point to secrets file if it was copied from Rundeck server
+        if [ -f /tmp/rundeck-secrets-upload.toml ]; then
+          export SECRETS_FILE=/tmp/rundeck-secrets-upload.toml
+          echo "Secrets file found for deployment"
+        fi
+
+        # Source environment and run deployment
+        export $(grep -v '^#' /home/streamlit-rundeck/streamlit-rundeck/.env | xargs)
+        /home/streamlit-rundeck/streamlit-rundeck/scripts/deploy-streamlit.sh
+
+        # Cleanup (rm -rf tolerates the stray directory the copyfile step leaves
+        # behind on no-secrets deploys; rm -f previously failed on it, marking
+        # otherwise-successful deployments as FAILED).
+        rm -rf /tmp/rundeck-secrets-upload.toml
     keepgoing: false
     strategy: node-first
-  options:
-  - name: github_url
-    description: GitHub repository URL (https://github.com/user/repo)
-    required: true
-    type: text
-    validation: '^https://github\.com/.+/.+$'
-  - name: target_branch
-    description: Git branch to deploy (leave empty to auto-detect default branch)
-    required: false
-    type: text
-  - name: main_file
-    description: Main Python file for the Streamlit application
-    required: true
-    type: text
-    value: app.py
-  - name: app_name  
-    description: Unique name for the Cloud Run service (lowercase, hyphens only)
-    required: true
-    type: text
-    validation: '^[a-z0-9-]+$'
-  - name: secrets_file
-    description: Upload .streamlit/secrets.toml file (optional)
-    required: false
-    type: file
   uuid: 12345678-1234-5678-9abc-123456789012
